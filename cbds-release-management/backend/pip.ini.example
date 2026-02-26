@@ -1,0 +1,8 @@
+[global]
+index-url = https://USER:TOKEN@YOUR-JFROG/artifactory/api/pypi/YOUR-PYPI-REPO/simple
+trusted-host = YOUR-JFROG
+timeout = 60
+
+; Alternativa sin exponer token en archivo:
+; set PIP_INDEX_URL=https://USER:TOKEN@YOUR-JFROG/artifactory/api/pypi/YOUR-PYPI-REPO/simple
+

@@ -1,0 +1,253 @@
+<div class="page-shell">
+  <header class="hero">
+    <div>
+      <p class="eyebrow">CBDS Release Management</p>
+      <h1>Registro de deploys y control de cambios</h1>
+      <p class="subtitle">
+        Captura la información del deploy, asocia build/artifacto de JFrog y crea/sincroniza CHG en ServiceNow.
+      </p>
+    </div>
+    <div class="hero-actions">
+      <button type="button" [class.active]="viewMode() === 'deploys'" (click)="setView('deploys')">
+        Deploys
+      </button>
+      <button type="button" [class.active]="viewMode() === 'connectors'" (click)="setView('connectors')">
+        Conectores
+      </button>
+    </div>
+  </header>
+
+  <p class="banner" *ngIf="integrationMessage">{{ integrationMessage }}</p>
+
+  <section *ngIf="viewMode() === 'deploys'" class="grid">
+    <form class="panel form-panel" [formGroup]="deployForm" (ngSubmit)="createDeploy()">
+      <div class="panel-title-row">
+        <h2>Nueva solicitud de deploy</h2>
+        <button type="button" class="ghost" (click)="lookupJfrogArtifact()">Consultar JFrog</button>
+      </div>
+
+      <div class="fields two-cols">
+        <label>
+          <span>Proyecto</span>
+          <input formControlName="project_name" />
+        </label>
+        <label>
+          <span>JIRA</span>
+          <input formControlName="jira_ticket" placeholder="CBDS-1234" />
+        </label>
+        <label>
+          <span>Modulo</span>
+          <input formControlName="module_name" />
+        </label>
+        <label>
+          <span>Codigo OP</span>
+          <input formControlName="op_code" />
+        </label>
+        <label>
+          <span>Pipeline</span>
+          <input formControlName="pipeline_name" placeholder="modulo-prod" />
+        </label>
+        <label>
+          <span>Ambiente</span>
+          <select formControlName="environment">
+            <option value="dev">dev</option>
+            <option value="staging">staging/uat</option>
+            <option value="prod">prod</option>
+          </select>
+        </label>
+        <label>
+          <span>Build number</span>
+          <input formControlName="build_number" />
+        </label>
+        <label>
+          <span>Solicitado por</span>
+          <input formControlName="requested_by" />
+        </label>
+      </div>
+
+      <div class="fields">
+        <label>
+          <span>Artifacto JFrog</span>
+          <input formControlName="jfrog_artifact" placeholder="repo/path/build.zip" />
+        </label>
+        <label>
+          <span>Jobs impactados (CSV)</span>
+          <input formControlName="impacted_jobs_csv" placeholder="job-dev,job-uat,job-prod" />
+        </label>
+        <label>
+          <span>Tablas impactadas (CSV)</span>
+          <input formControlName="impacted_tables_csv" placeholder="schema.tabla1,schema.tabla2" />
+        </label>
+        <label>
+          <span>Status interno</span>
+          <select formControlName="internal_status">
+            <option value="draft">draft</option>
+            <option value="ready_for_change">ready_for_change</option>
+            <option value="change_created">change_created</option>
+            <option value="approved">approved</option>
+            <option value="deployed">deployed</option>
+          </select>
+        </label>
+        <label>
+          <span>Descripcion tecnica</span>
+          <textarea rows="3" formControlName="technical_description"></textarea>
+        </label>
+        <label>
+          <span>Descripcion del cambio</span>
+          <textarea rows="3" formControlName="change_description"></textarea>
+        </label>
+        <label>
+          <span>Impacto si no se realiza</span>
+          <textarea rows="3" formControlName="impact_if_not_deployed"></textarea>
+        </label>
+        <label>
+          <span>Descripcion tecnica del deploy</span>
+          <textarea rows="4" formControlName="deploy_technical_steps"></textarea>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="submit" [disabled]="submittingDeploy()">Guardar deploy</button>
+        <span class="status">{{ deployMessage }}</span>
+      </div>
+    </form>
+
+    <section class="panel list-panel">
+      <div class="panel-title-row">
+        <h2>Deploys registrados</h2>
+        <button type="button" class="ghost" (click)="refreshDeploys()">Refrescar</button>
+      </div>
+
+      <p *ngIf="loadingDeploys()">Cargando...</p>
+      <div *ngIf="!loadingDeploys()" class="deploy-list">
+        <button
+          type="button"
+          class="deploy-row"
+          *ngFor="let d of deploys; trackBy: trackByDeployId"
+          [class.selected]="d.id === selectedDeployId"
+          (click)="selectedDeployId = d.id"
+        >
+          <div class="row-main">
+            <strong>#{{ d.id }} {{ d.project_name }}</strong>
+            <span>{{ d.jira_ticket }} | {{ d.op_code }}</span>
+          </div>
+          <div class="row-side">
+            <span>{{ d.environment }}</span>
+            <span>{{ d.servicenow_chg || 'sin CHG' }}</span>
+          </div>
+        </button>
+      </div>
+
+      <div class="deploy-detail" *ngIf="selectedDeploy">
+        <ng-container *ngIf="selectedDeploy as selected">
+          <div class="panel-title-row">
+            <h3>Detalle deploy #{{ selected.id }}</h3>
+            <div class="inline-actions">
+              <button type="button" class="ghost" (click)="createServiceNowChangeForSelected()">Crear CHG</button>
+              <button
+                type="button"
+                class="ghost"
+                [disabled]="!selected.servicenow_chg"
+                (click)="syncServiceNowStatus(selected.id)"
+              >
+                Sync CHG
+              </button>
+            </div>
+          </div>
+          <p><strong>CHG:</strong> {{ selected.servicenow_chg || 'N/A' }} | {{ selected.servicenow_status || 'N/A' }}</p>
+          <p><strong>Artifacto:</strong> {{ selected.jfrog_artifact || 'N/A' }}</p>
+          <p><strong>Jobs:</strong> {{ selected.impacted_jobs.join(', ') || 'N/A' }}</p>
+          <p><strong>Tablas:</strong> {{ selected.impacted_tables.join(', ') || 'N/A' }}</p>
+          <p><strong>Actualizado:</strong> {{ selected.updated_at | date: 'short' }}</p>
+        </ng-container>
+      </div>
+    </section>
+  </section>
+
+  <section *ngIf="viewMode() === 'connectors'" class="grid connectors-grid">
+    <section class="panel connector-menu">
+      <h2>Servicios</h2>
+      <button
+        type="button"
+        *ngFor="let c of serviceOptions"
+        [class.active]="c === selectedConnectorService"
+        (click)="selectConnector(c)"
+      >
+        {{ c }}
+      </button>
+      <button type="button" class="ghost" (click)="refreshConnectors()">Refrescar conectores</button>
+    </section>
+
+    <form class="panel connector-form" [formGroup]="connectorForm" (ngSubmit)="saveConnector()">
+      <div class="panel-title-row">
+        <h2>Configuracion de conector</h2>
+        <span class="chip">{{ connectorForm.value.service_name }}</span>
+      </div>
+
+      <div class="fields">
+        <label>
+          <span>Servicio</span>
+          <select formControlName="service_name" (change)="selectConnector($any($event.target).value)">
+            <option *ngFor="let c of serviceOptions" [value]="c">{{ c }}</option>
+          </select>
+        </label>
+        <label>
+          <span>Base URL</span>
+          <input formControlName="base_url" placeholder="https://host" />
+        </label>
+        <label>
+          <span>Usuario</span>
+          <input formControlName="username" />
+        </label>
+        <label>
+          <span>Token / Password</span>
+          <input type="password" formControlName="token" placeholder="dejar vacio para no cambiar" />
+        </label>
+        <label>
+          <span>Tipo de auth</span>
+          <select formControlName="auth_type">
+            <option value="basic">basic</option>
+            <option value="bearer">bearer</option>
+            <option value="api_key">api_key</option>
+            <option value="none">none</option>
+          </select>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" formControlName="active" />
+          <span>Activo</span>
+        </label>
+        <label>
+          <span>Extras (JSON)</span>
+          <textarea rows="8" formControlName="extras_json"></textarea>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="submit" [disabled]="connectorSaving()">Guardar conector</button>
+        <button type="button" class="ghost" (click)="testSelectedConnector()">Probar</button>
+        <span class="status">{{ connectorMessage }}</span>
+      </div>
+    </form>
+
+    <section class="panel connector-list">
+      <div class="panel-title-row">
+        <h2>Resumen de conectores</h2>
+        <span class="chip">{{ connectors.length }}</span>
+      </div>
+      <p *ngIf="loadingConnectors()">Cargando...</p>
+      <div class="connector-cards">
+        <article class="card" *ngFor="let c of connectors; trackBy: trackByService">
+          <header>
+            <strong>{{ c.service_name }}</strong>
+            <span [class.ok]="c.active">{{ c.active ? 'activo' : 'inactivo' }}</span>
+          </header>
+          <p><strong>URL:</strong> {{ c.base_url || 'N/A' }}</p>
+          <p><strong>Usuario:</strong> {{ c.username || 'N/A' }}</p>
+          <p><strong>Token:</strong> {{ c.token_masked || 'N/A' }}</p>
+          <p><strong>Auth:</strong> {{ c.auth_type }}</p>
+          <button type="button" class="ghost" (click)="selectConnector(c.service_name)">Editar</button>
+        </article>
+      </div>
+    </section>
+  </section>
+</div>

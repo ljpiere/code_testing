@@ -1,0 +1,11 @@
+registry=https://YOUR-JFROG/artifactory/api/npm/YOUR-NPM-REPO/
+always-auth=true
+
+; Si usan token Bearer:
+; //YOUR-JFROG/artifactory/api/npm/YOUR-NPM-REPO/:_authToken=${NPM_TOKEN}
+
+; Si usan usuario/password (token como password):
+; //YOUR-JFROG/artifactory/api/npm/YOUR-NPM-REPO/:username=USER
+; //YOUR-JFROG/artifactory/api/npm/YOUR-NPM-REPO/:_password=BASE64_PASSWORD
+; //YOUR-JFROG/artifactory/api/npm/YOUR-NPM-REPO/:email=devnull@example.com
+
